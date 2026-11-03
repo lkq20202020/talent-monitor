@@ -1,0 +1,58 @@
+name: talent-apartment-status-check
+
+on:
+  schedule:
+    # 每 30 分钟一次（GitHub 可能有几分钟延迟，属正常）
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: status-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 检查是否已通过（已通过则不再执行）
+        id: gate
+        run: |
+          if [ -f state.json ] && grep -q '"approved": true' state.json; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "已通过，跳过本次检查"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.skip == 'false'
+        with:
+          python-version: "3.11"
+
+      - name: 查询状态并发送通知
+        if: steps.gate.outputs.skip == 'false'
+        env:
+          MOBILE: ${{ secrets.MOBILE }}
+          APPLICANT_ID: ${{ secrets.APPLICANT_ID }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        run: python monitor.py
+
+      - name: 保存状态
+        if: steps.gate.outputs.skip == 'false'
+        run: |
+          if [ -n "$(git status --porcelain state.json)" ]; then
+            git config user.name "status-bot"
+            git config user.email "actions@users.noreply.github.com"
+            git add state.json
+            git commit -m "update status"
+            git push
+          else
+            echo "无变化，无需提交"
+          fi
