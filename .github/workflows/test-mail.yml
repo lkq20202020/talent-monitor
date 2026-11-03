@@ -1,0 +1,32 @@
+name: test-mail
+
+on:
+  workflow_dispatch:
+
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    steps:
+      - name: send test mail
+        env:
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        run: |
+          python - <<'EOF'
+          import os, smtplib, sys
+          from email.mime.text import MIMEText
+          from email.header import Header
+          to = os.environ["MAIL_TO"]; user = os.environ["SMTP_USER"]; pwd = os.environ["SMTP_PASS"]
+          msg = MIMEText("这是来自 GitHub 云端服务器的测试邮件。\n收到说明云端发信通道正常，复审状态一变就会自动通知你。", "plain", "utf-8")
+          msg["Subject"] = Header("【测试】云端发信通道验证", "utf-8")
+          msg["From"] = user; msg["To"] = to
+          try:
+              s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=30)
+              s.login(user, pwd)
+              s.sendmail(user, [to], msg.as_string())
+              s.quit()
+              print("SMTP_OK")
+          except Exception as e:
+              print("SMTP_FAIL", type(e).__name__, e); sys.exit(1)
+          EOF
